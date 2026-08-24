@@ -1,0 +1,101 @@
+shopper_id,metro,shopper_rating,preferred_shopper
+SH1,Birmingham,5.0,0
+SH2,Birmingham,4.53,1
+SH3,Birmingham,4.31,0
+SH4,Birmingham,4.61,0
+SH5,Birmingham,4.75,0
+SH6,Birmingham,4.84,0
+SH7,Birmingham,5.0,0
+SH8,Birmingham,4.58,0
+SH9,Birmingham,4.53,0
+SH10,Birmingham,4.63,0
+SH11,Birmingham,4.56,0
+SH12,Birmingham,4.97,0
+SH13,Birmingham,4.62,0
+SH14,Birmingham,4.83,1
+SH15,Birmingham,5.0,0
+SH16,Birmingham,4.72,0
+SH17,Birmingham,4.79,1
+SH18,Birmingham,4.93,0
+SH19,Birmingham,4.44,1
+SH20,Birmingham,4.75,1
+SH21,Birmingham,4.98,0
+SH22,Birmingham,4.81,0
+SH23,Birmingham,4.48,0
+SH24,Birmingham,4.53,0
+SH25,Birmingham,4.31,0
+SH26,San Francisco,4.98,0
+SH27,San Francisco,4.42,0
+SH28,San Francisco,5.0,0
+SH29,San Francisco,4.44,1
+SH30,San Francisco,5.0,0
+SH31,San Francisco,4.81,0
+SH32,San Francisco,4.68,0
+SH33,San Francisco,5.0,0
+SH34,San Francisco,5.0,0
+SH35,San Francisco,4.82,1
+SH36,San Francisco,4.32,0
+SH37,San Francisco,4.89,0
+SH38,San Francisco,4.42,0
+SH39,San Francisco,4.86,0
+SH40,San Francisco,4.14,0
+SH41,San Francisco,4.55,0
+SH42,San Francisco,4.63,1
+SH43,San Francisco,4.6,1
+SH44,San Francisco,4.95,0
+SH45,San Francisco,4.36,0
+SH46,San Francisco,3.86,0
+SH47,San Francisco,4.98,0
+SH48,San Francisco,5.0,1
+SH49,San Francisco,4.61,1
+SH50,San Francisco,4.76,1
+SH51,Los Angeles,4.78,0
+SH52,Los Angeles,5.0,1
+SH53,Los Angeles,4.92,1
+SH54,Los Angeles,4.82,1
+SH55,Los Angeles,4.34,0
+SH56,Los Angeles,4.6,1
+SH57,Los Angeles,4.71,0
+SH58,Los Angeles,4.41,0
+SH59,Los Angeles,4.77,0
+SH60,Los Angeles,4.65,0
+SH61,Los Angeles,4.66,0
+SH62,Los Angeles,5.0,0
+SH63,Los Angeles,4.5,0
+SH64,Los Angeles,4.41,0
+SH65,Los Angeles,5.0,0
+SH66,Los Angeles,4.22,1
+SH67,Los Angeles,4.84,0
+SH68,Los Angeles,4.88,0
+SH69,Los Angeles,4.56,0
+SH70,Los Angeles,4.09,0
+SH71,Los Angeles,5.0,1
+SH72,Los Angeles,4.63,0
+SH73,Los Angeles,4.63,1
+SH74,Los Angeles,4.67,1
+SH75,Los Angeles,4.91,0
+SH76,Austin,4.43,0
+SH77,Austin,4.52,1
+SH78,Austin,4.46,0
+SH79,Austin,5.0,1
+SH80,Austin,4.52,1
+SH81,Austin,4.66,0
+SH82,Austin,4.55,0
+SH83,Austin,4.82,0
+SH84,Austin,4.44,0
+SH85,Austin,4.5,0
+SH86,Austin,4.37,0
+SH87,Austin,5.0,0
+SH88,Austin,4.33,0
+SH89,Austin,5.0,1
+SH90,Austin,4.27,0
+SH91,Austin,4.74,0
+SH92,Austin,4.96,0
+SH93,Austin,4.67,1
+SH94,Austin,5.0,0
+SH95,Austin,4.55,1
+SH96,Austin,5.0,0
+SH97,Austin,4.75,0
+SH98,Austin,4.58,0
+SH99,Austin,4.74,0
+SH100,Austin,4.9,1

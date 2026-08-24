@@ -1,0 +1,5 @@
+metro,total_orders,bundles_formed,orders_bundled,pct_orders_bundled,total_km_saved,driver_hours_saved,vehicle_cost_saved_usd,avg_km_saved_per_bundle
+Austin,1469,394,788,0.5364,3617.2,120.6,1519.21,9.18
+Birmingham,1495,446,892,0.5967,3720.6,124.0,1562.64,8.34
+Los Angeles,1517,230,460,0.3032,2766.7,92.2,1162.02,12.03
+San Francisco,1519,487,974,0.6412,2711.9,90.4,1139.01,5.57

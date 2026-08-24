@@ -1,0 +1,5 @@
+model,auc,precision,recall,f1,brier,train_time_sec
+Logistic Regression,0.7699,0.6622,0.3054,0.4181,0.149,0.032
+Random Forest,0.7648,0.6592,0.3,0.4123,0.15,4.988
+Neural Net (PyTorch),0.7638,0.6566,0.3095,0.4207,0.1505,4.045
+XGBoost,0.7627,0.6314,0.3041,0.4105,0.152,0.691

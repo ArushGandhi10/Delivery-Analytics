@@ -1,0 +1,18 @@
+feature,importance
+pay_per_hour,0.25079262
+est_minutes,0.14354481
+preferred_shopper,0.05491827
+shopper_rating,0.045984387
+both_shop_flag,0.043541327
+pay_per_km,0.040557463
+metro_Austin,0.039777543
+total_items,0.03974468
+both_delivery_flag,0.039478827
+bundle_offer_pay,0.03931349
+bundle_dist_km,0.038854547
+metro_Birmingham,0.038479436
+metro_San Francisco,0.03839986
+items_per_dollar,0.038065102
+has_on_demand,0.037199646
+same_store_flag,0.036083665
+metro_Los Angeles,0.03526438
