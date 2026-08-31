@@ -1,12 +1,16 @@
 """
-Self-contained D3.js hexagon map -- no external tile server, no API key.
-Renders real H3 hexagon boundaries, colored by bundling activity, with
-animated "corridor" lines showing which stores actually got bundled together.
+H3 hex density + bundling corridor map, drawn on a real Leaflet street basemap.
 
-Why not pydeck: pydeck's basemap depends on a live tile provider (Mapbox/Carto).
-If that fails to load -- no internet, no token, a firewall -- the map silently
-renders blank. For a live interview demo, a self-contained visualization that
-can't fail on external dependency is the safer engineering choice.
+Colors each real H3 hexagon by order density, overlays the top bundling
+corridors as animated lines, and marks stores -- all on actual streets rather
+than an abstract projection.
+
+Leaflet's JS and CSS are inlined directly from local files (via npm) rather
+than loaded from a CDN at render time -- this removes the library itself as
+a point of failure. The only remaining external dependency is the raster
+tile *images* from CARTO, which is unavoidable for a real basemap; if those
+fail to load, the hexagons/corridors/markers still render correctly on a
+blank background, since they don't depend on the tile images themselves.
 """
 
 import json
@@ -17,18 +21,25 @@ import h3
 HAITI = "#25123A"
 MEADOW = "#23CC6B"
 YELLOWGREEN = "#BAE581"
-OFFWHITE = "#FAF9F6"
 MUTED = "#8B8894"
 
-_D3_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "d3.min.js")
-with open(_D3_PATH, "r", encoding="utf-8") as _f:
-    _D3_SOURCE = _f.read()
+_DIR = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(_DIR, "leaflet.js"), "r", encoding="utf-8") as _f:
+    _LEAFLET_JS = _f.read()
+with open(os.path.join(_DIR, "leaflet.css"), "r", encoding="utf-8") as _f:
+    _LEAFLET_CSS = _f.read()
+
+_FILL_LOW = (223, 245, 232)   # #DFF5E8
+_FILL_HIGH = (35, 204, 107)   # #23CC6B (Meadow)
 
 
-def _project(lat, lon, lat0, lon0, scale_x, scale_y, pad, width, height):
-    x = pad + (lon - lon0) * scale_x
-    y = height - pad - (lat - lat0) * scale_y
-    return x, y
+def _hex_color(t):
+    """Interpolate between the pale and full Meadow fill for a 0-1 ratio."""
+    t = max(0.0, min(1.0, t))
+    r = round(_FILL_LOW[0] + (_FILL_HIGH[0] - _FILL_LOW[0]) * t)
+    g = round(_FILL_LOW[1] + (_FILL_HIGH[1] - _FILL_LOW[1]) * t)
+    b = round(_FILL_LOW[2] + (_FILL_HIGH[2] - _FILL_LOW[2]) * t)
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def render_hex_map(orders_df, stores_df, matched_df, title="", resolution=8,
@@ -48,7 +59,7 @@ def render_hex_map(orders_df, stores_df, matched_df, title="", resolution=8,
         hx = h3.latlng_to_cell(r["store_lat"], r["store_lon"], resolution)
         hex_counts[hx] = hex_counts.get(hx, 0) + 1
 
-    # --- aggregate bundle activity per hex (how often a hex participates in an accepted bundle) ---
+    # --- aggregate bundle activity per hex + corridor frequency between hexes ---
     hex_bundle_counts = {}
     corridor_counts = {}
     if matched_df is not None and len(matched_df) > 0:
@@ -61,216 +72,149 @@ def render_hex_map(orders_df, stores_df, matched_df, title="", resolution=8,
                 key = tuple(sorted([h1, h2]))
                 corridor_counts[key] = corridor_counts.get(key, 0) + 1
 
-    max_orders = max(hex_counts.values()) if hex_counts else 1
     max_bundles = max(hex_bundle_counts.values()) if hex_bundle_counts else 1
-    # normalize against the 75th percentile rather than the raw max, so density
-    # isn't dominated by a single outlier hex leaving everything else pale
-    sorted_order_vals = sorted(hex_counts.values())
-    p75_orders = sorted_order_vals[int(len(sorted_order_vals) * 0.75)] if sorted_order_vals else 1
-    p75_orders = max(p75_orders, 1)
+    # Normalize order density against the 75th percentile, not the raw max,
+    # so one outlier hex doesn't wash out every other hex's color.
+    sorted_vals = sorted(hex_counts.values())
+    p75 = sorted_vals[int(len(sorted_vals) * 0.75)] if sorted_vals else 1
+    p75 = max(p75, 1)
 
-    # --- bounding box across all hex boundary vertices ---
-    all_lats, all_lons = [], []
-    hex_boundaries = {}
-    for hx in hex_counts:
-        boundary = h3.cell_to_boundary(hx)
-        hex_boundaries[hx] = boundary
-        for lat, lon in boundary:
-            all_lats.append(lat)
-            all_lons.append(lon)
-
-    lat_min, lat_max = min(all_lats), max(all_lats)
-    lon_min, lon_max = min(all_lons), max(all_lons)
-    lat_pad = (lat_max - lat_min) * 0.12 or 0.01
-    lon_pad = (lon_max - lon_min) * 0.12 or 0.01
-    lat_min -= lat_pad; lat_max += lat_pad
-    lon_min -= lon_pad; lon_max += lon_pad
-
-    # Fit canvas to the metro's actual aspect ratio instead of a fixed box,
-    # so small dense metros don't waste half the card as blank space.
-    pad = 18
-    mean_lat_rad = math.radians((lat_min + lat_max) / 2)
-    lon_span = (lon_max - lon_min) * math.cos(mean_lat_rad)
-    lat_span = (lat_max - lat_min)
-    aspect = (lon_span / lat_span) if lat_span > 0 else 1.0
-    aspect = max(0.6, min(aspect, 2.2))  # keep it sane for very thin/wide metros
-
-    if aspect >= (max_width - 2 * pad) / (max_height - 2 * pad):
-        width = max_width
-        height = int(width / aspect) + 2 * pad
-        height = min(height, max_height)
-    else:
-        height = max_height
-        width = int(height * aspect) + 2 * pad
-        width = min(width, max_width)
-
-    avail_w, avail_h = width - 2 * pad, height - 2 * pad
-    scale = min(avail_w / (lon_span or 1e-6), avail_h / (lat_span or 1e-6))
-    scale_x = scale * math.cos(mean_lat_rad)
-    scale_y = scale
-
-    def proj(lat, lon):
-        return _project(lat, lon, lat_min, lon_min, scale_x, scale_y, pad, width, height)
-
-    # --- build hex polygon data ---
+    # --- build hex polygons using REAL lat/lng boundaries (no projection needed --
+    # Leaflet handles the map projection itself) ---
     hexes_js = []
-    for hx, boundary in hex_boundaries.items():
-        pts = [proj(lat, lon) for lat, lon in boundary]
-        center_lat, center_lon = h3.cell_to_latlng(hx)
-        cx, cy = proj(center_lat, center_lon)
+    all_lats, all_lons = [], []
+    for hx, count in hex_counts.items():
+        boundary = h3.cell_to_boundary(hx)  # list of (lat, lng) tuples
+        for lat, lng in boundary:
+            all_lats.append(lat)
+            all_lons.append(lng)
+        density_ratio = min(count / p75, 1.0)
+        bundle_ratio = hex_bundle_counts.get(hx, 0) / max_bundles if max_bundles else 0
+        color_t = max(density_ratio, bundle_ratio)
         hexes_js.append({
-            "id": hx,
-            "points": pts,
-            "cx": cx, "cy": cy,
-            "orders": hex_counts.get(hx, 0),
+            "boundary": [[lat, lng] for lat, lng in boundary],
+            "orders": count,
             "bundles": hex_bundle_counts.get(hx, 0),
-            "order_ratio": round(min(hex_counts.get(hx, 0) / p75_orders, 1.0), 3),
-            "bundle_ratio": round(hex_bundle_counts.get(hx, 0) / max_bundles, 3) if max_bundles else 0,
+            "color": _hex_color(color_t),
+            "fillOpacity": round(0.35 + 0.45 * math.sqrt(color_t), 3),
         })
 
-    # --- top corridors, projected as center-to-center lines ---
+    # --- top corridors, as real center-to-center great-circle-ish lines ---
     sorted_corridors = sorted(corridor_counts.items(), key=lambda x: -x[1])[:top_corridors]
     max_corridor = sorted_corridors[0][1] if sorted_corridors else 1
     corridors_js = []
     for (h1, h2), cnt in sorted_corridors:
         lat1, lon1 = h3.cell_to_latlng(h1)
         lat2, lon2 = h3.cell_to_latlng(h2)
-        x1, y1 = proj(lat1, lon1)
-        x2, y2 = proj(lat2, lon2)
-        corridors_js.append({"x1": x1, "y1": y1, "x2": x2, "y2": y2,
-                             "weight": round(cnt / max_corridor, 3), "count": cnt})
+        corridors_js.append({
+            "points": [[lat1, lon1], [lat2, lon2]],
+            "weight": round(cnt / max_corridor, 3),
+            "count": cnt,
+        })
 
     # --- store markers ---
     stores_js = []
     if stores_df is not None:
         for _, s in stores_df.iterrows():
-            x, y = proj(s["store_lat"], s["store_lon"])
-            if pad - 20 <= x <= width - pad + 20 and pad - 20 <= y <= height - pad + 20:
-                stores_js.append({"x": x, "y": y, "retailer": s["retailer"], "id": s["store_id"]})
+            stores_js.append({
+                "lat": float(s["store_lat"]), "lng": float(s["store_lon"]),
+                "retailer": s["retailer"], "id": s["store_id"],
+            })
+            all_lats.append(float(s["store_lat"]))
+            all_lons.append(float(s["store_lon"]))
 
-    data = {"hexes": hexes_js, "corridors": corridors_js, "stores": stores_js,
-           "width": width, "height": height}
-    data_json = json.dumps(data)
+    bounds = [[min(all_lats), min(all_lons)], [max(all_lats), max(all_lons)]]
+    uid = abs(hash((title, resolution, len(hexes_js)))) % (10**8)
 
-    html = f"""
-<div style="background:#fff;border-radius:16px;padding:18px 20px 12px;
-     border:1px solid rgba(37,18,58,0.07); box-shadow:0 2px 14px rgba(37,18,58,0.05);">
-  <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:1.02rem;
-       color:{HAITI};margin-bottom:2px;">{title}</div>
-  <div style="font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:{MUTED};
-       letter-spacing:0.06em;margin-bottom:8px;">
-       H3 RES {resolution} · HEX FILL = BUNDLE ACTIVITY · LINES = TOP BUNDLING CORRIDORS
-  </div>
-  <div id="map-{id(orders_df)}" style="position:relative;"></div>
+    payload = json.dumps({"hexes": hexes_js, "corridors": corridors_js,
+                          "stores": stores_js, "bounds": bounds})
+
+    return f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap');
+#card-{uid} {{ background:#fff; border-radius:16px; padding:18px 20px 12px;
+  border:1px solid rgba(37,18,58,0.07); box-shadow:0 2px 14px rgba(37,18,58,0.05); }}
+#title-{uid} {{ font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:1.02rem;
+  color:{HAITI}; margin-bottom:2px; }}
+#sub-{uid} {{ font-family:'IBM Plex Mono',monospace; font-size:0.68rem; color:{MUTED};
+  letter-spacing:0.06em; margin-bottom:8px; }}
+#map-{uid} {{ height:{max_height}px; border-radius:12px; background:#EDEBE6; }}
+.corridor-{uid} {{ stroke-dasharray:1 8; animation: dash-{uid} 2.6s linear infinite; }}
+@keyframes dash-{uid} {{ to {{ stroke-dashoffset:-72; }} }}
+{_LEAFLET_CSS}
+</style>
+<div id="card-{uid}">
+  <div id="title-{uid}">{title}</div>
+  <div id="sub-{uid}">H3 RES {resolution} &middot; HEX FILL = ORDER DENSITY &middot; LINES = TOP BUNDLING CORRIDORS</div>
+  <div id="map-{uid}"></div>
 </div>
 <script>
-{_D3_SOURCE}
+{_LEAFLET_JS}
 </script>
 <script>
 (function() {{
-  const data = {data_json};
-  const HAITI = "{HAITI}", MEADOW = "{MEADOW}", YG = "{YELLOWGREEN}", MUTED = "{MUTED}";
-  const container = document.getElementById("map-{id(orders_df)}");
+  const D = {payload};
+  const HAITI = "{HAITI}", YG = "{YELLOWGREEN}";
 
-  const svg = d3.select(container).append("svg")
-    .attr("width", data.width).attr("height", data.height)
-    .style("overflow", "visible");
+  function init() {{
+    // Multiple maps on one page settle their iframe layout at different
+    // rates -- a fixed delay works for some and not others. Poll until the
+    // container genuinely has a non-zero size before Leaflet ever touches it,
+    // since Leaflet caches container size at map-creation time and a later
+    // invalidateSize() does not repair vector layers already projected
+    // against a stale zero size.
+    function whenSized(tries) {{
+      tries = tries || 0;
+      const el = document.getElementById("map-{uid}");
+      if ((!el || el.offsetWidth === 0) && tries < 100) {{
+        return setTimeout(function() {{ whenSized(tries + 1); }}, 50);
+      }}
+      start();
+    }}
 
-  const tooltip = d3.select(container).append("div")
-    .style("position", "absolute").style("pointer-events", "none")
-    .style("background", HAITI).style("color", "#fff")
-    .style("font-family", "Inter, sans-serif").style("font-size", "12px")
-    .style("padding", "7px 11px").style("border-radius", "8px")
-    .style("box-shadow", "0 4px 16px rgba(37,18,58,0.25)")
-    .style("opacity", 0).style("z-index", 10).style("line-height", "1.5");
+    function start() {{
+      const initCenter = [(D.bounds[0][0] + D.bounds[1][0]) / 2, (D.bounds[0][1] + D.bounds[1][1]) / 2];
+      const map = L.map("map-{uid}", {{ scrollWheelZoom: false, center: initCenter, zoom: 11 }});
+    L.tileLayer('https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{
+      attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: 'abcd', maxZoom: 19
+    }}).addTo(map);
 
-  const colorScale = d3.interpolateRgb("#DFF5E8", MEADOW);
-  const intensity = d3.scaleSqrt().domain([0, 1]).range([0.6, 1]);
-
-  // hexagons, staggered fade + scale-in
-  const hexG = svg.append("g");
-  hexG.selectAll("polygon")
-    .data(data.hexes)
-    .join("polygon")
-    .attr("points", d => d.points.map(p => p.join(",")).join(" "))
-    .attr("fill", d => colorScale(Math.max(d.order_ratio, d.bundle_ratio)))
-    .attr("stroke", HAITI).attr("stroke-width", 1.1).attr("stroke-opacity", 0.55)
-    .attr("opacity", 0)
-    .style("cursor", "pointer")
-    .on("mouseenter", function(event, d) {{
-      d3.select(this).attr("stroke-width", 2.2).attr("stroke-opacity", 0.75);
-      tooltip.style("opacity", 1)
-        .html(`<b>${{d.orders}}</b> orders originate here<br/><b>${{d.bundles}}</b> bundle-endpoint events`);
-    }})
-    .on("mousemove", function(event) {{
-      const [mx, my] = d3.pointer(event, container);
-      tooltip.style("left", (mx + 14) + "px").style("top", (my - 10) + "px");
-    }})
-    .on("mouseleave", function() {{
-      d3.select(this).attr("stroke-width", 1).attr("stroke-opacity", 0.4);
-      tooltip.style("opacity", 0);
-    }})
-    .transition().duration(500).delay((d, i) => i * 5)
-    .attr("opacity", d => intensity(Math.max(d.order_ratio, d.bundle_ratio)));
-
-  // bundling corridors -- animated dash flow
-  const corridorG = svg.append("g");
-  const corridors = corridorG.selectAll("line")
-    .data(data.corridors)
-    .join("line")
-    .attr("x1", d => d.x1).attr("y1", d => d.y1)
-    .attr("x2", d => d.x2).attr("y2", d => d.y2)
-    .attr("stroke", YG)
-    .attr("stroke-width", d => 1 + d.weight * 3.2)
-    .attr("stroke-linecap", "round")
-    .attr("opacity", 0)
-    .attr("stroke-dasharray", "1 7")
-    .style("cursor", "pointer")
-    .on("mouseenter", function(event, d) {{
-      d3.select(this).attr("stroke", MEADOW).attr("stroke-width", 2 + d.weight * 4);
-      tooltip.style("opacity", 1).html(`<b>${{d.count}}</b> bundles matched on this corridor`);
-    }})
-    .on("mousemove", function(event) {{
-      const [mx, my] = d3.pointer(event, container);
-      tooltip.style("left", (mx + 14) + "px").style("top", (my - 10) + "px");
-    }})
-    .on("mouseleave", function(event, d) {{
-      d3.select(this).attr("stroke", YG).attr("stroke-width", 1 + d.weight * 3.2);
-      tooltip.style("opacity", 0);
+    D.hexes.forEach(function(h) {{
+      const poly = L.polygon(h.boundary, {{
+        color: HAITI, weight: 1, opacity: 0.45,
+        fillColor: h.color, fillOpacity: h.fillOpacity
+      }}).addTo(map);
+      poly.bindTooltip(
+        '<b>' + h.orders + '</b> orders originate here<br/><b>' + h.bundles + '</b> bundle-endpoint events',
+        {{ sticky: true }}
+      );
+      poly.on('mouseover', function() {{ this.setStyle({{ weight: 2.4, opacity: 0.85 }}); }});
+      poly.on('mouseout', function() {{ this.setStyle({{ weight: 1, opacity: 0.45 }}); }});
     }});
 
-  corridors.transition().duration(700).delay(400).attr("opacity", 0.8);
+    D.corridors.forEach(function(c) {{
+      const line = L.polyline(c.points, {{
+        color: YG, weight: 1.5 + c.weight * 4, opacity: 0.85,
+        className: "corridor-{uid}"
+      }}).addTo(map);
+      line.bindTooltip('<b>' + c.count + '</b> bundles matched on this corridor');
+      line.on('mouseover', function() {{ this.setStyle({{ color: "#23CC6B", weight: 2.5 + c.weight * 5 }}); }});
+      line.on('mouseout', function() {{ this.setStyle({{ color: YG, weight: 1.5 + c.weight * 4 }}); }});
+    }});
 
-  function animateDash() {{
-    corridors.attr("stroke-dashoffset", 0)
-      .transition().duration(2800).ease(d3.easeLinear)
-      .attr("stroke-dashoffset", -64)
-      .on("end", animateDash);
+    D.stores.forEach(function(s) {{
+      L.circleMarker([s.lat, s.lng], {{
+        radius: 5, fillColor: "#fff", color: HAITI, weight: 2, fillOpacity: 1
+      }}).addTo(map).bindTooltip('<b>' + s.retailer + '</b><br/>Store ' + s.id);
+    }});
+
+    map.fitBounds(D.bounds, {{ padding: [16, 16] }});
+    }}
+
+    whenSized();
   }}
-  animateDash();
 
-  // store markers
-  svg.append("g").selectAll("circle")
-    .data(data.stores)
-    .join("circle")
-    .attr("cx", d => d.x).attr("cy", d => d.y).attr("r", 0)
-    .attr("fill", "#fff").attr("stroke", HAITI).attr("stroke-width", 1.6)
-    .style("cursor", "pointer")
-    .on("mouseenter", function(event, d) {{
-      d3.select(this).attr("r", 6).attr("fill", YG);
-      tooltip.style("opacity", 1).html(`<b>${{d.retailer}}</b><br/>Store ${{d.id}}`);
-    }})
-    .on("mousemove", function(event) {{
-      const [mx, my] = d3.pointer(event, container);
-      tooltip.style("left", (mx + 14) + "px").style("top", (my - 10) + "px");
-    }})
-    .on("mouseleave", function() {{
-      d3.select(this).attr("r", 3.4).attr("fill", "#fff");
-      tooltip.style("opacity", 0);
-    }})
-    .transition().duration(400).delay(900)
-    .attr("r", 3.4);
+  init();
 }})();
 </script>
 """
-    return html
