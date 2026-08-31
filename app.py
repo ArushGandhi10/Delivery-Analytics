@@ -133,8 +133,14 @@ def card(label, value, note="", accent=False):
     <div class="value">{value}</div><div class="note">{note}</div></div>"""
 
 
-t1, t2, t3, t4, t5 = st.tabs([
-    "Overview", "Geospatial Method", "Acceptance Model", "Experiment", "Fleet Impact"])
+SHOW_EXPERIMENT_TAB = False  # flip to True to bring the Experiment tab back
+
+if SHOW_EXPERIMENT_TAB:
+    t1, t2, t3, t4, t5 = st.tabs([
+        "Overview", "Geospatial Method", "Acceptance Model", "Experiment", "Fleet Impact"])
+else:
+    t1, t2, t3, t5 = st.tabs([
+        "Overview", "Geospatial Method", "Acceptance Model", "Fleet Impact"])
 
 # ============================== OVERVIEW ==============================
 with t1:
@@ -355,7 +361,8 @@ with t3:
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 # ============================ EXPERIMENT ============================
-with t4:
+if SHOW_EXPERIMENT_TAB:
+ with t4:
     st.markdown('<div class="section-head">Designing an experiment on bundle pay</div>',
                 unsafe_allow_html=True)
     st.markdown("""<div class="section-sub">The models show which features <em>predict</em>
